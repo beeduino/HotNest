@@ -109,7 +109,7 @@ int getTemperature(byte sensor_num){
     byte data[12];
 
     for (byte i=0; i<8; i++){
-        address[i] = EEPROM.read((int)(sensor*8+i));
+        address[i] = EEPROM.read((int)(sensor_num*8+i));
     }
 
     //writeToScratchpad(address);

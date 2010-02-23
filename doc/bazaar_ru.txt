@@ -1,4 +1,11 @@
+= Работа с консольным клиентом Bazaar =
 bzr add <file> - добавить файл (требуется коммит для добавления в репозиторий)
 bzr status - доказывает файлы проекта и неизвестные файлы
-bzr commit - добавление файлов в репозиторий
-bzr push
+bzr commit - добавление файлов в репозиторий (добавляет локально)
+bzr push bzr+ssh://beeduino@bazaar.launchpad.net/~beeduino/beeduino/trunk/
+bzr branch lp:beeduino - загрузка кода с репозитория (lp - сокращенная ссылка на launchpad.net)
+
+= Просмотр репозитория через интернет =
+ * https://code.launchpad.net/~beeduino/beeduino/trunk
+ * http://bazaar.launchpad.net/~beeduino/beeduino/trunk/files
+ * http://bazaar.launchpad.net/%7Ebeeduino/beeduino/trunk/annotate/head%3A/arduino/Hotnest/Hotnest.pde
