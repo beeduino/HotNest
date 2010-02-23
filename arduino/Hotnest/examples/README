@@ -1,0 +1,4 @@
+lcd_non_spi - does not work for me (dimas). 
+    Originated from http://www.arduino.cc/playground/Code/PCD8544
+FreeRAM - allows to check free memory after including different modules    
+
