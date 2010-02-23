@@ -1,1 +1,9 @@
-test
+
+It currently uses next libraries 
+
+DS1307 - http://code.google.com/p/libds1307/ GNU General Public License v3
+FAT16  - http://code.google.com/p/fat16lib/  GNU General Public License v3
+ by William Greiman
+OneWire - bsd-like
+ 
+
