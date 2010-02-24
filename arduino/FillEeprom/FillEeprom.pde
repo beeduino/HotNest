@@ -61,18 +61,18 @@ void loop(void) {
     sensor_num = Serial.read();
     Serial.println(sensor_num);
     if (sensor_num>=48 & sensor_num<=57) {
-	    ensor_num = sensor_num-48;
+        sensor_num = sensor_num-48;
         for (i=0; i<8; i++) {
-	        EPROM.write((int)(sensor_num*8+i), addr[i]);
+            EPROM.write((int)(sensor_num*8+i), addr[i]);
         }
     } else if (sensor_num=='e'){
         for (i=0; i<40; i++) {
-	        for (byte j=0; j<8; j++) {
-		        Serial.print(EEPROM.read((int)(i*8+j)), HEX);
-		        Serial.print(" ");
-	        }
-	    Serial.println();
-	    }
+            for (byte j=0; j<8; j++) {
+                Serial.print(EEPROM.read((int)(i*8+j)), HEX);
+                Serial.print(" ");
+            }
+            Serial.println();
+        }
     }
     delay(10000);    
 }

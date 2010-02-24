@@ -17,10 +17,8 @@
  * along with the Beeduino Project; see the file COPYING.  If not, see
  * <http://www.gnu.org/licenses/>.
  *
- * $Id:$
  */
- 
- 
+
 #include <WProgram.h>
 #include <avr/pgmspace.h>
 #include <EEPROM.h>
