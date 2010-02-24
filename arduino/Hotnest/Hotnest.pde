@@ -1,4 +1,4 @@
-/* Hotnest.pde datalogging sketch 
+/* Hotnest.pde is a datalogging sketch 
  * Copyright (C) 2009-2010 by Dmitry Sorokin 
  *
  * This file is part of Beeduino Project
@@ -37,13 +37,6 @@ PString tempr_str(buffer, sizeof(buffer));
 int tempr;
 
 OneWire  ow(5);  //addresses of sensors are in EEPROM
-
-/*
-byte sensors[][8] PROGMEM = {
-    {0x28, 0xD4, 0x64, 0x72, 0x02, 0x00, 0x00, 0xE8},
-     {0x28, 0x48, 0xD1, 0x72, 0x02, 0x00, 0x00, 0xB9}
-};
-*/
 
 SdCard card;
 Fat16 file;
@@ -164,6 +157,8 @@ void loop(void){
         } 
     }
  
+    //TODO: RTC commented out - not enough memory
+    //TODO: see http://www.arduino.cc/cgi-bin/yabb2/YaBB.pl?num=1191209057/104#104
     //Serial.print(RTC.get(DS1307_YR,true)); //read year
 
     file.print(millis());
@@ -175,7 +170,8 @@ void loop(void){
         if (sensor_num==2) {
             tempr_str.begin();
             tempr_str.print(tempr);
-            //TODO: buffer is pointer to tempr_str. Look how to use tempr_str in the first place.
+            //TODO: buffer is the pointer to the tempr_str string. 
+            //TODO: Look how to use tempr_str in the first place.
             lcd.LCD_3310_write_string(5, 5, buffer, MENU_NORMAL );          }
         file.print(";");
         file.print(tempr);
