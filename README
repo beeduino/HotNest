@@ -17,7 +17,7 @@ nokia_3310_lcd - possible authors are requested for license
 = FillEEPROM.pde =
 FillEEPROM.pde is a sketch that allows to scan address of a sensor (DS18B20 returns 8 bytes 
 as a unique address) and write it into EEPROM. It saves program memory we need for 
-other staff. :)
+other stuff. :)
 
 = Farm =
 This part will include server side script to accept data from serial port (USB) and log it 
