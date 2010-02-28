@@ -1,0 +1,15 @@
+Script logconvert.py scans log file from Hotnest datalogger and converts raw
+values from sensors into human readable format. 
+Timestamps (first column in raw file) could be converted when you provide start 
+and end time for your measurement. It could be easily done in loglegend.txt file.
+The line should include file name (for file with raw data, without ".RAW" extention), 
+start datetime and end datetime values tab delimited.
+
+Then you can run logconvert script like this:
+
+ ./logconvert.py -f 2010-02-20
+
+Or you can provide all needed options in command line:
+
+ ./logconvert.py -f 2010-02-20 -s "2010-02-20 22:45:23" -e "2010-02-21 11:19:06" -c True
+ 

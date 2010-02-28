@@ -7,6 +7,7 @@ bzr branch lp:beeduino - загрузка кода с репозитория (lp
 bzr log - вывод списка ревизий (коммитов)
 bzr help log - подсказка по формату команды log
 bzr log -r -10.. - вывод последних 10 ревизий
+bzr diff -r 11..10 - вывод изменений между версиями в формате diff
 
 = Просмотр репозитория через интернет =
  * https://code.launchpad.net/~beeduino/beeduino/trunk
