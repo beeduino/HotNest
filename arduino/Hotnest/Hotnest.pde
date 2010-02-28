@@ -118,14 +118,14 @@ char fname[] = "HOTNEST.RAW";
 void setup(void)
 {
     Serial.begin(9600);
-    delay(20000);
-    Serial.print("F1:");
-    Serial.println(FreeRam());
+    //delay(20000);
+    //Serial.print("F1:");
+    //Serial.println(FreeRam());
     lcd.LCD_3310_init();
     lcd.LCD_3310_clear();
 
-    PgmPrintln("Type any");
-    while (!Serial.available());
+    //PgmPrintln("Type any");
+    //while (!Serial.available());
 
     // initialize the SD card
     if (!card.init()) error("sd.ini");
@@ -133,16 +133,16 @@ void setup(void)
     // initialize a FAT16 volume
     if (!Fat16::init(card)) error("F16::ini");
 
-    PgmPrint("Add to: ");
-    Serial.println(fname);
+    //PgmPrint("Add to: ");
+    //Serial.println(fname);
 
     file.writeError = false;
 
     if (!file.open(fname, O_CREAT | O_APPEND | O_WRITE)) error("open");
     file.println("");
     file.println("Start:");
-    Serial.print("F2:");
-    Serial.println(FreeRam());
+    //Serial.print("F2:");
+    //Serial.println(FreeRam());
 }
 
 void loop(void){
@@ -163,7 +163,7 @@ void loop(void){
 
     file.print(millis());
     startConversion();
-    Serial.print(millis());
+    //Serial.print(millis());
     for (byte sensor_num=0; sensor_num<3; sensor_num++) {
         tempr = getTemperature(sensor_num);
         // output value from 2nd sensor on lcd.
@@ -175,15 +175,17 @@ void loop(void){
             lcd.LCD_3310_write_string(5, 5, buffer, MENU_NORMAL );          }
         file.print(";");
         file.print(tempr);
-        PgmPrint(";");
+        if (sensor_num!=0) {
+            PgmPrint(";");
+        }
         Serial.print(tempr);
     }
-    Serial.print(";");
-    Serial.print(millis());
+    //Serial.print(";");
+    //Serial.print(millis());
     file.println();
     Serial.println();
-    Serial.print("FR:");
-    Serial.println(FreeRam());
+    //Serial.print("FR:");
+    //Serial.println(FreeRam());
     delay(15000);
 }
 
