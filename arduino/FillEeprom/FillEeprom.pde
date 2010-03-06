@@ -72,16 +72,15 @@ void loop(void) {
     }
     Serial.println(serial_str);
     sensor_num = atoi(serial_str);      // atoi returns 0 if error
-    Serial.println(sensor_num, DEC);
     // TODO: Add check for sensor_num is actually equal 0
     if (sensor_num>0) {
         for (i=0; i<8; i++) {
-            EPROM.write((int)(sensor_num*8+i), addr[i]);
+            EEPROM.write((int)(sensor_num*8+i), addr[i]);
         }
-        Serial.println("Write me to EEPROM");
     } 
     else if (serial_str[0]=='e')      // EEPROM print
     {  
+        Serial.println("EEPROM table:");
         for (i=0; i<40; i++) {
             for (byte j=0; j<8; j++) {
                 Serial.print(EEPROM.read((int)(i*8+j)), HEX);
