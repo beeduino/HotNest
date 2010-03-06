@@ -19,6 +19,7 @@
  * <http://www.gnu.org/licenses/>.
  */
 
+#include <stdlib.h>
 #include <EEPROM.h>
 #include <OneWire.h>
 
@@ -26,6 +27,10 @@
 OneWire  ds(5);  // on pin 5
 
 byte sensor_num;
+
+byte ch;
+char serial_str[4];
+int received;
 
 void setup(void) {
     Serial.begin(9600);
@@ -37,6 +42,9 @@ void loop(void) {
     byte present = 0;
     byte data[12];
     byte addr[8];
+
+    received = 0;
+    sensor_num = -1;
   
     if ( !ds.search(addr)) {
         Serial.print("No more addresses.\n");
@@ -57,15 +65,23 @@ void loop(void) {
     }
     Serial.print("Assign serial number for that sensor: ");
     while (!Serial.available()>0);
-
-    sensor_num = Serial.read();
-    Serial.println(sensor_num);
-    if (sensor_num>=48 & sensor_num<=57) {
-        sensor_num = sensor_num-48;
+    while (Serial.available()) {
+        serial_str[received++] = Serial.read();
+        serial_str[received] = '\0';
+        delay(10);
+    }
+    Serial.println(serial_str);
+    sensor_num = atoi(serial_str);      // atoi returns 0 if error
+    Serial.println(sensor_num, DEC);
+    // TODO: Add check for sensor_num is actually equal 0
+    if (sensor_num>0) {
         for (i=0; i<8; i++) {
             EPROM.write((int)(sensor_num*8+i), addr[i]);
         }
-    } else if (sensor_num=='e'){
+        Serial.println("Write me to EEPROM");
+    } 
+    else if (serial_str[0]=='e')      // EEPROM print
+    {  
         for (i=0; i<40; i++) {
             for (byte j=0; j<8; j++) {
                 Serial.print(EEPROM.read((int)(i*8+j)), HEX);
@@ -73,7 +89,12 @@ void loop(void) {
             }
             Serial.println();
         }
+    } 
+    else if (serial_str[0]=='s')      // Skip sensor
+    {
+        Serial.println("Skip..");
     }
+
     delay(10000);    
 }
 
