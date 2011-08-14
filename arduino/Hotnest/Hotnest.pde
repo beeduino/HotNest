@@ -28,18 +28,61 @@
 #include "nokia_3310_lcd.h"
 #include <PString.h>
 #include <Wire.h>
-//#include <DS1307.h> commented out - not enough memory..
+#include <DS1307.h> // commented out - not enough memory..
+//#include <stdio.h>
+
+#define SENSOR_TBL_MAX 36
+#define SENSOR_TBL_OFFSET 0
+
+//keypad debounce parameter
+#define DEBOUNCE_MAX 15
+#define DEBOUNCE_ON  10
+#define DEBOUNCE_OFF 3 
+
+#define NUM_KEYS 5
+
+// joystick number
+#define UP_KEY 1
+#define LEFT_KEY 2
+#define CENTER_KEY 4
+#define DOWN_KEY 3
+#define RIGHT_KEY 0
+
+// adc preset value, represent top value,incl. noise & margin,that the adc reads, when a key is pressed
+// set noise & margin = 30 (0.15V@5V)
+int  adc_key_val[5] ={30, 120, 280, 445, 667 };
+
+// debounce counters
+byte button_count[NUM_KEYS];
+// button status - pressed/released
+byte button_status[NUM_KEYS];
+// button on flags for user program 
+byte button_flag[NUM_KEYS];
+
+int sensor_to_watch;
 
 Nokia_3310_lcd lcd = Nokia_3310_lcd();
 char buffer[5];
 PString tempr_str(buffer, sizeof(buffer));
+char date_buf[10];
+PString date_str(date_buf, sizeof(date_buf));
+char time_buf[9];
+PString time_str(time_buf, sizeof(time_buf));
+
+// display elements
+char sensor_num_str[3];
+
+
 
 int tempr;
+float ctempr;
 
 OneWire  ow(5);  //addresses of sensors are in EEPROM
 
 SdCard card;
 Fat16 file;
+
+int SD_Ready = 1;
 
 byte inSerByte = 0;
 
@@ -53,7 +96,7 @@ void error_P(const char *str)
         PgmPrint("SD e ");
         Serial.println(card.errorCode, HEX);
     }
-    while(1);
+    SD_Ready = 0;
 }
 
 void writeToScratchpad(byte* address){
@@ -117,6 +160,33 @@ char fname[] = "HOTNEST.RAW";
   
 void setup(void)
 {
+     
+    // setup interrupt-driven keypad arrays  
+    // reset button arrays
+    for(byte i=0; i<NUM_KEYS; i++){
+        button_count[i]=0;
+        button_status[i]=0;
+        button_flag[i]=0;
+    }
+  
+    // Setup timer2 -- Prescaler/256
+    TCCR2A &= ~((1<<WGM21) | (1<<WGM20));
+    TCCR2B &= ~(1<<WGM22);
+    TCCR2B = (1<<CS22)|(1<<CS21);      
+
+    ASSR |=(0<<AS2);
+
+    // Use normal mode  
+    TCCR2A =0;    
+    //Timer2 Overflow Interrupt Enable  
+    TIMSK2 |= (0<<OCIE2A);
+    TCNT2=0x6;  // counting starts from 6;  
+    TIMSK2 = (1<<TOIE2);    
+
+    SREG|=1<<SREG_I;
+
+    sensor_to_watch = 0;
+
     Serial.begin(9600);
     lcd.LCD_3310_init();
     lcd.LCD_3310_clear();
@@ -132,6 +202,10 @@ void setup(void)
     if (!file.open(fname, O_CREAT | O_APPEND | O_WRITE)) error("open");
     file.println("");
     file.println("Start:");
+    Serial.print("FR:");
+    Serial.println(FreeRam());
+    
+    //RTC.start();
 }
 
 void loop(void){
@@ -148,33 +222,218 @@ void loop(void){
  
     //TODO: RTC commented out - not enough memory
     //TODO: see http://www.arduino.cc/cgi-bin/yabb2/YaBB.pl?num=1191209057/104#104
-    //Serial.print(RTC.get(DS1307_YR,true)); //read year
-
+    date_str.begin();
+    Serial.print("Date: ");
+    date_str.print(RTC.get(DS1307_YR,true)); //read year
+    date_str.print("/");
+    date_str.print(RTC.get(DS1307_MTH, true));
+    date_str.print("/");
+    date_str.print(RTC.get(DS1307_DATE, true));
+    time_str.begin();
+    time_str.print(RTC.get(DS1307_HR, true));
+    time_str.print(":");
+    time_str.print(RTC.get(DS1307_MIN, true));
+    time_str.print(":");
+    time_str.println(RTC.get(DS1307_SEC, true));
+    Serial.print(date_str);
+    Serial.print(" ");
+    Serial.println(time_str);
+  
+    file.print(date_str);
+    file.print(" ");
+    file.print(time_str);
+    file.print(":");
     file.print(millis());
+    Serial.print(millis());
+    lcd.LCD_3310_write_string(0, 0, " TEMP ", MENU_HIGHLIGHT); 
+    lcd.LCD_3310_write_string(36, 0, " SETUP ", MENU_NORMAL);
+    lcd.LCD_3310_write_string(0,2, date_buf, MENU_NORMAL);
+    lcd.LCD_3310_write_string(0,3, time_buf, MENU_NORMAL);
     startConversion();
-    for (byte sensor_num=0; sensor_num<3; sensor_num++) {
+    for (byte sensor_num=0; sensor_num<SENSOR_TBL_MAX; sensor_num++) {
         tempr = getTemperature(sensor_num);
+        ctempr = tempr * 0.0625;
         // output value from 2nd sensor on lcd.
-        if (sensor_num==2) {
+        if (sensor_num==sensor_to_watch) {
             tempr_str.begin();
-            tempr_str.print(tempr);
+            tempr_str.print(sensor_to_watch);
+            lcd.LCD_3310_write_string(1, 5, buffer, MENU_NORMAL );          
             //TODO: buffer is the pointer to the tempr_str string. 
             //TODO: Look how to use tempr_str in the first place.
-            lcd.LCD_3310_write_string(5, 5, buffer, MENU_NORMAL );          
+            tempr_str.begin();
+            tempr_str.print(ctempr);
+            lcd.LCD_3310_write_string(30, 5, buffer, MENU_NORMAL );          
         }
         file.print(";");
-        file.print(tempr);
+        file.print(ctempr);
         if (sensor_num!=0) {
             PgmPrint(";");
         }
-        Serial.print(tempr);
+        Serial.print(ctempr, 2);
     }
     file.println();
-    Serial.println();
+    Serial.println(millis());
 
     //don't sync too often - requires 2048 bytes of I/O to SD card
     if (!file.sync()) error("sync");
+    Serial.print("FR:");
+    Serial.println(FreeRam());
 
     delay(15000);
 }
+
+
+// The followinging are interrupt-driven keypad reading functions
+//  which includes DEBOUNCE ON/OFF mechanism, and continuous pressing detection
+
+
+// Convert ADC value to key number
+char get_key(unsigned int input)
+{
+	char k;
+    
+	for (k = 0; k < NUM_KEYS; k++)
+	{
+		if (input < adc_key_val[k])
+		{
+            return k;
+        }
+	}
+    if (k >= NUM_KEYS) k = -1;     // No valid key pressed
+    return k;
+}
+
+void manage_key(byte i){
+    switch(i){
+        case UP_KEY:
+            Serial.println("UP");
+            break;  
+        case DOWN_KEY:
+            Serial.println("DOWN");
+            break;
+        case LEFT_KEY:
+            Serial.println("LEFT");
+            sensor_to_watch--;
+            if (sensor_to_watch<0){
+                sensor_to_watch = SENSOR_TBL_MAX-1;
+            }
+            break;
+        case RIGHT_KEY:
+            Serial.println("RIGHT");
+            sensor_to_watch++;
+            if (sensor_to_watch>=SENSOR_TBL_MAX){
+                sensor_to_watch = 0;
+            }
+            break;
+    }
+    button_status[i]=0;
+    button_flag[i]=0;
+}
+/*
+void update_adc_key(){
+    int adc_key_in;
+    char key_in;
+    byte i;
+
+    adc_key_in = analogRead(3);
+    key_in = get_key(adc_key_in);
+    for(i=0; i<NUM_KEYS; i++)
+    {
+        if(key_in==i)  //one key is pressed 
+        {
+        /*
+            if(button_count[i]<DEBOUNCE_MAX)
+            {
+                button_count[i]++;
+                if(button_count[i]>DEBOUNCE_ON)
+                {
+
+            if(button_status[i] == 0)
+            {
+                button_flag[i] = 1;
+                button_status[i] = 1; //button debounced to 'pressed' status
+                manage_key(i);
+            }
+            /*
+                }
+            }
+
+        }
+        else // no button pressed
+        {
+            button_status[i]=0;
+
+        }
+        /*
+            if (button_count[i] >0)
+            {  
+                button_flag[i] = 0;	
+                button_count[i]--;
+                if(button_count[i]<DEBOUNCE_OFF){
+                    button_status[i]=0;   //button debounced to 'released' status
+                }
+            }
+        }
+
+    }
+}
+*/
+
+void update_adc_key()
+{
+    int adc_key_in;
+    char key_in;
+    byte i;
+
+    adc_key_in = analogRead(3);
+    key_in = get_key(adc_key_in);
+    for(i=0; i<NUM_KEYS; i++)
+    {
+        if(key_in==i)  //one key is pressed  
+        {
+            if(button_count[i]<DEBOUNCE_MAX)
+            {
+                button_count[i]++;
+                if(button_count[i]>DEBOUNCE_ON)
+                {
+                    if(button_status[i] == 0)
+                    {
+                        button_flag[i] = 1;
+                        button_status[i] = 1; //button debounced to 'pressed' status
+                    }
+                }
+            }
+            else
+                if (button_status[i]==1 and button_flag[i]==1)
+                {
+                    button_status[i]=0;
+                    button_flag[i]=0;
+                    Serial.print("bc: ");
+                    Serial.println(button_count[i], DEC);
+                    manage_key(i);
+                }
+        }
+        else // no button pressed
+        {
+          if (button_count[i] >0) 
+          {
+              button_flag[i] = 0;
+              button_count[i]--;
+              if(button_count[i]<DEBOUNCE_OFF){
+                  button_status[i]=0;   //button debounced to 'released' status
+              }
+          }
+        }
+    }
+}
+
+
+// Timer2 interrupt routine -
+// 1/(160000000/256/(256-6)) = 4ms interval
+
+ISR(TIMER2_OVF_vect) {  
+  TCNT2  = 6;
+  update_adc_key();
+}
+
 
