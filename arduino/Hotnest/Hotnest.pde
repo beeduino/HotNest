@@ -28,7 +28,7 @@
 #include "nokia_3310_lcd.h"
 #include <PString.h>
 #include <Wire.h>
-#include <DS1307.h> // commented out - not enough memory..
+#include <DS1307.h> 
 //#include <stdio.h>
 
 #define SENSOR_TBL_MAX 36
@@ -48,6 +48,8 @@
 #define DOWN_KEY 3
 #define RIGHT_KEY 0
 
+const int activityLED = 3;
+
 // adc preset value, represent top value,incl. noise & margin,that the adc reads, when a key is pressed
 // set noise & margin = 30 (0.15V@5V)
 int  adc_key_val[5] ={30, 120, 280, 445, 667 };
@@ -62,10 +64,13 @@ byte button_flag[NUM_KEYS];
 int sensor_to_watch;
 
 Nokia_3310_lcd lcd = Nokia_3310_lcd();
+
 char buffer[5];
 PString tempr_str(buffer, sizeof(buffer));
+
 char date_buf[10];
 PString date_str(date_buf, sizeof(date_buf));
+
 char time_buf[9];
 PString time_str(time_buf, sizeof(time_buf));
 
@@ -73,9 +78,16 @@ PString time_str(time_buf, sizeof(time_buf));
 char sensor_num_str[3];
 
 
-
 int tempr;
-float ctempr;
+float current_tempr;
+
+float last_tempr[SENSOR_TBL_MAX];
+float avr_tempr[SENSOR_TBL_MAX];
+float min_tempr[SENSOR_TBL_MAX];
+float max_tempr[SENSOR_TBL_MAX];
+
+int prev_day;
+int current_day;
 
 OneWire  ow(5);  //addresses of sensors are in EEPROM
 
@@ -156,11 +168,14 @@ int getTemperature(byte sensor_num){
 }
 
 int tmp;
-char fname[] = "HOTNEST.RAW";
+char fname[] = "HOTNEST.TXT";
   
 void setup(void)
 {
-     
+    // activity_led setup
+    pinMode(activityLED, OUTPUT);    
+
+  
     // setup interrupt-driven keypad arrays  
     // reset button arrays
     for(byte i=0; i<NUM_KEYS; i++){
@@ -208,6 +223,19 @@ void setup(void)
     //RTC.start();
 }
 
+void display_sensor(int sensnum) {
+  
+    tempr_str.begin();
+    tempr_str.print(sensnum);
+    lcd.LCD_3310_write_string(1, 5, buffer, MENU_NORMAL );          
+    //TODO: buffer is the pointer to the tempr_str string. 
+    //TODO: Look how to use tempr_str in the first place.
+    tempr_str.begin();
+    tempr_str.print(last_tempr[sensnum]);
+    lcd.LCD_3310_write_string(30, 5, buffer, MENU_NORMAL );         
+
+}
+
 void loop(void){
     if (Serial.available()>0) {
         inSerByte = Serial.read();
@@ -220,6 +248,7 @@ void loop(void){
         } 
     }
  
+    digitalWrite(activityLED, HIGH); 
     //TODO: RTC commented out - not enough memory
     //TODO: see http://www.arduino.cc/cgi-bin/yabb2/YaBB.pl?num=1191209057/104#104
     date_str.begin();
@@ -250,26 +279,27 @@ void loop(void){
     lcd.LCD_3310_write_string(0,2, date_buf, MENU_NORMAL);
     lcd.LCD_3310_write_string(0,3, time_buf, MENU_NORMAL);
     startConversion();
+    
     for (byte sensor_num=0; sensor_num<SENSOR_TBL_MAX; sensor_num++) {
         tempr = getTemperature(sensor_num);
-        ctempr = tempr * 0.0625;
+        current_tempr = tempr * 0.0625;
+
+        last_tempr[sensor_num] = current_tempr;
+    }
+    
+    for (byte sensor_num=0; sensor_num<SENSOR_TBL_MAX; sensor_num++) {
         // output value from 2nd sensor on lcd.
         if (sensor_num==sensor_to_watch) {
-            tempr_str.begin();
-            tempr_str.print(sensor_to_watch);
-            lcd.LCD_3310_write_string(1, 5, buffer, MENU_NORMAL );          
-            //TODO: buffer is the pointer to the tempr_str string. 
-            //TODO: Look how to use tempr_str in the first place.
-            tempr_str.begin();
-            tempr_str.print(ctempr);
-            lcd.LCD_3310_write_string(30, 5, buffer, MENU_NORMAL );          
+            display_sensor(sensor_to_watch);  
         }
-        file.print(";");
-        file.print(ctempr);
+
         if (sensor_num!=0) {
+            file.print(";");
             PgmPrint(";");
         }
-        Serial.print(ctempr, 2);
+        file.print(last_tempr[sensor_num]);
+        Serial.print(last_tempr[sensor_num], 2); 
+      
     }
     file.println();
     Serial.println(millis());
@@ -278,6 +308,8 @@ void loop(void){
     if (!file.sync()) error("sync");
     Serial.print("FR:");
     Serial.println(FreeRam());
+    
+    digitalWrite(activityLED, LOW);
 
     delay(15000);
 }
@@ -317,6 +349,7 @@ void manage_key(byte i){
             if (sensor_to_watch<0){
                 sensor_to_watch = SENSOR_TBL_MAX-1;
             }
+            display_sensor(sensor_to_watch);
             break;
         case RIGHT_KEY:
             Serial.println("RIGHT");
@@ -324,60 +357,12 @@ void manage_key(byte i){
             if (sensor_to_watch>=SENSOR_TBL_MAX){
                 sensor_to_watch = 0;
             }
+            display_sensor(sensor_to_watch);
             break;
     }
     button_status[i]=0;
     button_flag[i]=0;
 }
-/*
-void update_adc_key(){
-    int adc_key_in;
-    char key_in;
-    byte i;
-
-    adc_key_in = analogRead(3);
-    key_in = get_key(adc_key_in);
-    for(i=0; i<NUM_KEYS; i++)
-    {
-        if(key_in==i)  //one key is pressed 
-        {
-        /*
-            if(button_count[i]<DEBOUNCE_MAX)
-            {
-                button_count[i]++;
-                if(button_count[i]>DEBOUNCE_ON)
-                {
-
-            if(button_status[i] == 0)
-            {
-                button_flag[i] = 1;
-                button_status[i] = 1; //button debounced to 'pressed' status
-                manage_key(i);
-            }
-            /*
-                }
-            }
-
-        }
-        else // no button pressed
-        {
-            button_status[i]=0;
-
-        }
-        /*
-            if (button_count[i] >0)
-            {  
-                button_flag[i] = 0;	
-                button_count[i]--;
-                if(button_count[i]<DEBOUNCE_OFF){
-                    button_status[i]=0;   //button debounced to 'released' status
-                }
-            }
-        }
-
-    }
-}
-*/
 
 void update_adc_key()
 {
