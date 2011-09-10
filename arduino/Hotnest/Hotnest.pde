@@ -1,5 +1,5 @@
 /* Hotnest.pde is a datalogging sketch 
- * Copyright (C) 2009-2010 by Dmitry Sorokin 
+ * Copyright (C) 2009-2011 by Dmitry Sorokin 
  *
  * This file is part of Beeduino Project
  *
@@ -31,7 +31,7 @@
 #include <DS1307.h> 
 //#include <stdio.h>
 
-#define SENSOR_TBL_MAX 36
+#define SENSOR_TBL_MAX 25
 #define SENSOR_TBL_OFFSET 0
 
 //keypad debounce parameter
@@ -52,7 +52,7 @@ const int activityLED = 3;
 
 // adc preset value, represent top value,incl. noise & margin,that the adc reads, when a key is pressed
 // set noise & margin = 30 (0.15V@5V)
-int  adc_key_val[5] ={30, 120, 280, 445, 667 };
+int  adc_key_val[5] ={30, 120, 280, 445, 667};
 
 // debounce counters
 byte button_count[NUM_KEYS];
@@ -68,26 +68,33 @@ Nokia_3310_lcd lcd = Nokia_3310_lcd();
 char buffer[5];
 PString tempr_str(buffer, sizeof(buffer));
 
-char date_buf[10];
-PString date_str(date_buf, sizeof(date_buf));
+char date_str[9];
 
-char time_buf[9];
-PString time_str(time_buf, sizeof(time_buf));
+char timestamp[9];
+char time_str[6];
+
+int today;
+int prev_measure_day;
+int prev_day;
 
 // display elements
 char sensor_num_str[3];
 
 
-int tempr;
-float current_tempr;
+int sensor_value;
+float current_sensor_value;
 
-float last_tempr[SENSOR_TBL_MAX];
-float avr_tempr[SENSOR_TBL_MAX];
-float min_tempr[SENSOR_TBL_MAX];
-float max_tempr[SENSOR_TBL_MAX];
+int last_value[SENSOR_TBL_MAX];
+int average_value[SENSOR_TBL_MAX];
+int prev_average_value[SENSOR_TBL_MAX];
+int min_value[SENSOR_TBL_MAX];
+int prev_min_value[SENSOR_TBL_MAX];
+int max_value[SENSOR_TBL_MAX];
+int prev_max_value[SENSOR_TBL_MAX];
 
-int prev_day;
-int current_day;
+//String prev_day = String('');
+//String current_day = String('');
+int measure_counter = 0;
 
 OneWire  ow(5);  //addresses of sensors are in EEPROM
 
@@ -97,6 +104,9 @@ Fat16 file;
 int SD_Ready = 1;
 
 byte inSerByte = 0;
+
+int tmp;
+char fname[] = "HOTNEST.TXT";
 
 // store error strings in flash to save RAM
 #define error(s) error_P(PSTR(s))
@@ -167,9 +177,169 @@ int getTemperature(byte sensor_num){
     return t;
 }
 
-int tmp;
-char fname[] = "HOTNEST.TXT";
+float convertValue(int value)
+{
+  float  sensor_value;  
+  sensor_value = value * 0.0625;
   
+  return sensor_value;
+}
+
+void display_sensor(int _sensor_num) 
+{
+    tempr_str.begin();
+    tempr_str.print(_sensor_num);
+    lcd.LCD_3310_write_string(6, 2, buffer, MENU_NORMAL );          
+    //TODO: buffer is the pointer to the tempr_str string. 
+    //TODO: Look how to use tempr_str in the first place.
+    tempr_str.begin();
+    tempr_str.print(convertValue(last_value[_sensor_num]));
+    lcd.LCD_3310_write_string(30, 2, buffer, MENU_NORMAL );
+ 
+    tempr_str.begin();
+    tempr_str.print(convertValue(average_value[_sensor_num]));
+    lcd.LCD_3310_write_string(19, 3, buffer, MENU_NORMAL );
+     
+    //   
+    tempr_str.begin();
+    tempr_str.print(convertValue(min_value[_sensor_num]));
+    lcd.LCD_3310_write_string(19, 4, buffer, MENU_NORMAL );
+    //
+    tempr_str.begin();
+    tempr_str.print(convertValue(max_value[_sensor_num]));
+    lcd.LCD_3310_write_string(19, 5, buffer, MENU_NORMAL );
+
+    // display previous day's data
+    //if (prev_day!=today) 
+    //{
+        tempr_str.begin();
+        tempr_str.print(prev_average_value[_sensor_num]);
+        lcd.LCD_3310_write_string(55, 3, buffer, MENU_NORMAL ); 
+        
+        tempr_str.begin();
+        tempr_str.print(prev_min_value[_sensor_num]);
+        lcd.LCD_3310_write_string(55, 4, buffer, MENU_NORMAL );    
+    
+        tempr_str.begin();
+        tempr_str.print(prev_max_value[_sensor_num]);
+        lcd.LCD_3310_write_string(55, 5, buffer, MENU_NORMAL );    
+    //}
+}
+
+void updateSensorHistory(void) 
+{
+   int _sensor_value;
+   for (byte sensor_num=0; sensor_num<SENSOR_TBL_MAX; sensor_num++) 
+   {
+       _sensor_value = last_value[sensor_num];
+       min_value[sensor_num] = min(_sensor_value, min_value[sensor_num]);
+       max_value[sensor_num] = max(_sensor_value, max_value[sensor_num]);
+       if (measure_counter==1) 
+       {
+           average_value[sensor_num] = last_value[sensor_num];
+       }
+       else
+       {
+           average_value[sensor_num] = int((average_value[sensor_num] + last_value[sensor_num])/2);
+       }
+   }
+}
+
+String fmt(int rtc_val)
+{
+    //String rtc_str = String('');
+    String rtc_str;
+    if (rtc_val<10) {
+        rtc_str = String(rtc_val, DEC);
+        rtc_str = String('0' + rtc_str); 
+    }
+    else
+        rtc_str = String(rtc_val, DEC);
+        
+    return rtc_str;
+}
+
+int getDate(char* _date_str)
+{
+    //String date = String('');
+    String date;
+    String temp_str;
+    int _day;
+    //char _date_str[9];
+    
+    date = String(RTC.get(DS1307_YR,true), DEC); //read year
+    date = date.substring(2);
+    date = String(date + '/');
+    temp_str = fmt(RTC.get(DS1307_MTH, true));
+    //temp_str = fmt(String(RTC.get(DS1307_MTH, true), DEC));
+    date = String(date + temp_str);
+    date = String(date + '/');
+
+    _day = RTC.get(DS1307_DATE, true);
+    temp_str = fmt(_day);
+    date = String(date + temp_str);
+    
+    date.toCharArray(_date_str, 9);
+    _date_str[8] = '\0';
+    
+    return _day;
+}
+
+void getTime(char* _timestamp, char* _time_str)
+{
+    String timestamp;
+    
+    timestamp = fmt(RTC.get(DS1307_HR, true));
+    timestamp = timestamp + String(":");
+    timestamp = timestamp + fmt(RTC.get(DS1307_MIN, true));
+    timestamp = timestamp + String(":");
+    timestamp = timestamp + fmt(RTC.get(DS1307_SEC, true));
+    timestamp.toCharArray(_timestamp, 9);
+    _timestamp[8] = '\0';
+    timestamp.toCharArray(_time_str, 6);
+    _time_str[5] = '\0';
+}
+
+void initSensorTables() 
+{
+    for (byte sensor_num=0; sensor_num<SENSOR_TBL_MAX; sensor_num++) 
+    {
+        min_value[sensor_num] = 3000;
+        max_value[sensor_num] = -1000;
+        average_value[sensor_num] = 0;
+    }
+}
+
+
+void initSensorHistory() 
+{
+    for (byte sensor_num=0; sensor_num<SENSOR_TBL_MAX; sensor_num++) 
+    {
+        prev_min_value[sensor_num] = 0;
+        prev_max_value[sensor_num] = 0;
+        prev_average_value[sensor_num] = 0;
+    }
+}
+
+
+void copySensorTables() 
+{
+    for (byte sensor_num=0; sensor_num<SENSOR_TBL_MAX; sensor_num++) 
+    {
+        prev_min_value[sensor_num] = min_value[sensor_num];
+        prev_min_value[sensor_num] = max_value[sensor_num];
+        prev_average_value[sensor_num] = average_value[sensor_num];
+    }
+}
+  
+void setForNewDay(void)
+{
+    measure_counter = 0;
+    copySensorTables();
+    initSensorTables();
+}
+
+
 void setup(void)
 {
     // activity_led setup
@@ -201,6 +371,9 @@ void setup(void)
     SREG|=1<<SREG_I;
 
     sensor_to_watch = 0;
+    
+    initSensorTables();
+    initSensorHistory();
 
     Serial.begin(9600);
     lcd.LCD_3310_init();
@@ -221,18 +394,10 @@ void setup(void)
     Serial.println(FreeRam());
     
     //RTC.start();
-}
 
-void display_sensor(int sensnum) {
-  
-    tempr_str.begin();
-    tempr_str.print(sensnum);
-    lcd.LCD_3310_write_string(1, 5, buffer, MENU_NORMAL );          
-    //TODO: buffer is the pointer to the tempr_str string. 
-    //TODO: Look how to use tempr_str in the first place.
-    tempr_str.begin();
-    tempr_str.print(last_tempr[sensnum]);
-    lcd.LCD_3310_write_string(30, 5, buffer, MENU_NORMAL );         
+    // tempr calcs
+    today = getDate(date_str);
+    prev_day = prev_measure_day = today;
 
 }
 
@@ -251,41 +416,57 @@ void loop(void){
     digitalWrite(activityLED, HIGH); 
     //TODO: RTC commented out - not enough memory
     //TODO: see http://www.arduino.cc/cgi-bin/yabb2/YaBB.pl?num=1191209057/104#104
-    date_str.begin();
-    Serial.print("Date: ");
-    date_str.print(RTC.get(DS1307_YR,true)); //read year
-    date_str.print("/");
-    date_str.print(RTC.get(DS1307_MTH, true));
-    date_str.print("/");
-    date_str.print(RTC.get(DS1307_DATE, true));
-    time_str.begin();
-    time_str.print(RTC.get(DS1307_HR, true));
-    time_str.print(":");
-    time_str.print(RTC.get(DS1307_MIN, true));
-    time_str.print(":");
-    time_str.println(RTC.get(DS1307_SEC, true));
+
+    //date_str.begin();
+    
+    today = getDate(date_str);
+    
+    if (today!=prev_day)
+    {
+        setForNewDay();
+        prev_day = prev_measure_day;    
+    }
+    prev_measure_day = today;     
+    getTime(timestamp, time_str);
+    
     Serial.print(date_str);
     Serial.print(" ");
-    Serial.println(time_str);
+    Serial.println(timestamp);
+    Serial.println(";");
+    Serial.print(millis());
+    //Serial.println(";");
   
     file.print(date_str);
     file.print(" ");
-    file.print(time_str);
-    file.print(":");
+    file.print(timestamp);
+    file.print(";");
     file.print(millis());
-    Serial.print(millis());
+
     lcd.LCD_3310_write_string(0, 0, " TEMP ", MENU_HIGHLIGHT); 
     lcd.LCD_3310_write_string(36, 0, " SETUP ", MENU_NORMAL);
-    lcd.LCD_3310_write_string(0,2, date_buf, MENU_NORMAL);
-    lcd.LCD_3310_write_string(0,3, time_buf, MENU_NORMAL);
+    lcd.LCD_3310_write_string(0,1, date_str, MENU_NORMAL);
+    //lcd.LCD_3310_write_string(0,1, "11/09/07", MENU_NORMAL);
+    lcd.LCD_3310_write_string(52,1, time_str, MENU_NORMAL);
+
+    lcd.LCD_3310_write_string(0, 3, "av", MENU_NORMAL); 
+    lcd.LCD_3310_write_string(0, 4, "mi", MENU_NORMAL);
+    lcd.LCD_3310_write_string(0, 5, "ma", MENU_NORMAL); 
+
     startConversion();
     
-    for (byte sensor_num=0; sensor_num<SENSOR_TBL_MAX; sensor_num++) {
-        tempr = getTemperature(sensor_num);
-        current_tempr = tempr * 0.0625;
+    for (byte sensor_num=0; sensor_num<SENSOR_TBL_MAX; sensor_num++) 
+    {
+        sensor_value = getTemperature(sensor_num);
+        //current_sensor_value = sensor_value * 0.0625;
 
-        last_tempr[sensor_num] = current_tempr;
+        last_value[sensor_num] = sensor_value;
     }
+    
+    measure_counter++;
+
+    //calc_average();
+    
+    updateSensorHistory();
     
     for (byte sensor_num=0; sensor_num<SENSOR_TBL_MAX; sensor_num++) {
         // output value from 2nd sensor on lcd.
@@ -293,16 +474,17 @@ void loop(void){
             display_sensor(sensor_to_watch);  
         }
 
-        if (sensor_num!=0) {
-            file.print(";");
-            PgmPrint(";");
-        }
-        file.print(last_tempr[sensor_num]);
-        Serial.print(last_tempr[sensor_num], 2); 
+        //if (sensor_num!=0) {
+        file.print(";");
+        Serial.print(";");
+        //}
+        file.print(convertValue(last_value[sensor_num]));
+        Serial.print(convertValue(last_value[sensor_num]), 2); 
       
     }
     file.println();
     Serial.println(millis());
+    Serial.print(";");
 
     //don't sync too often - requires 2048 bytes of I/O to SD card
     if (!file.sync()) error("sync");
@@ -315,22 +497,22 @@ void loop(void){
 }
 
 
-// The followinging are interrupt-driven keypad reading functions
+// The following are interrupt-driven keypad reading functions
 //  which includes DEBOUNCE ON/OFF mechanism, and continuous pressing detection
 
 
 // Convert ADC value to key number
 char get_key(unsigned int input)
 {
-	char k;
+    char k;
     
-	for (k = 0; k < NUM_KEYS; k++)
+    for (k = 0; k < NUM_KEYS; k++)
+    {
+        if (input < adc_key_val[k])
 	{
-		if (input < adc_key_val[k])
-		{
             return k;
         }
-	}
+    }
     if (k >= NUM_KEYS) k = -1;     // No valid key pressed
     return k;
 }
