@@ -3,7 +3,7 @@
 HotNest is an Arduino-based datalogger.
 
 
-## Disclamer
+## Disclaimer
 The code and hardware prototype were done in 2011 for a community project with the aim to collect temperature-map data from the honeybee winter cluster. There were no much development since then. My implementation of hardware prototype is still working nowadays (in 2019).
 
 
